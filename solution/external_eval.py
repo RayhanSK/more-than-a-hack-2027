@@ -47,6 +47,7 @@ sys.path.insert(0, os.path.join(ROOT, "evaluation"))
 import possession_metrics as pm  # noqa: E402
 import possession_v1 as v1  # noqa: E402
 import possession_v2 as v2  # noqa: E402
+import possession_v3 as v3  # noqa: E402
 
 H, A, D = v1.H, v1.A, v1.D
 EXTERNAL_DIR = os.path.join(ROOT, "data", "external", "metrica_sample")  # gitignored
@@ -140,8 +141,8 @@ def degrade(ball, seed):
     return out
 
 
-def features(players_h, players_a, ball):
-    """near (n, 2) and median player speed (n,), in the same form as the competition pipeline."""
+def nearest(players_h, players_a, ball):
+    """(n, 2) distance in metres from the ball to the nearest home and away player."""
     length, width = PITCH
     near = np.full((len(ball), 2), np.nan)
     for side, players in ((H, players_h), (A, players_a)):
@@ -150,12 +151,17 @@ def features(players_h, players_a, ball):
         with np.errstate(all="ignore"):
             near[:, side] = np.nanmin(np.where(np.isnan(dist), np.inf, dist), axis=1)
         near[np.isinf(near[:, side]), side] = np.nan
+    return near
+
+
+def player_speed(players_h, players_a):
+    """(n,) median player speed in m/s, in the same form as the competition pipeline."""
+    length, width = PITCH
     allp = np.concatenate([players_h, players_a], axis=1)
     step = np.hypot(np.diff(allp[:, :, 0], axis=0) * length,
                     np.diff(allp[:, :, 1], axis=0) * width) * FPS
     with np.errstate(all="ignore"):
-        speed = np.concatenate([[np.nan], np.nanmedian(step, axis=1)])
-    return near, speed
+        return np.concatenate([[np.nan], np.nanmedian(step, axis=1)])
 
 
 def load_game(game):
@@ -163,14 +169,22 @@ def load_game(game):
     frames, period, ph, ball = read_tracking_csv(paths["RawTrackingData_Home_Team"])
     _, _, pa, _ = read_tracking_csv(paths["RawTrackingData_Away_Team"])
     gt = event_labels(pd.read_csv(paths["RawEventsData"]), len(frames))
-    return {"period": period, "home": ph, "away": pa, "ball": ball, "gt": gt}
+    return {"period": period, "home": ph, "away": pa, "ball": ball, "gt": gt,
+            "speed": player_speed(ph, pa)}
 
 
 # -- scoring --------------------------------------------------------------------------------
 
-def decode(ball, near, speed, period, p, version):
-    log_emit = v1.tracking_log_evidence(ball, near, p)
-    if version >= 2:
+def decode(g, ball, p, version):
+    period, speed = g["period"], g["speed"]
+    if version >= 3:
+        blocks = [(i[0], i[-1]) for i in (np.flatnonzero(period == h) for h in np.unique(period))]
+        filled = v3.fill_short_gaps(ball, int(round(p["fill_max_s"] * FPS)), blocks)
+        near = nearest(g["home"], g["away"], filled)
+        log_emit = v3.log_evidence(ball, filled, near, speed, PITCH, FPS, p)
+    else:
+        log_emit = v1.tracking_log_evidence(ball, nearest(g["home"], g["away"], ball), p)
+    if version == 2:
         log_emit += v2.dead_log_evidence(ball, speed, FPS, p)
     out = np.empty(len(ball), dtype=np.int8)
     log_trans = v1.log_transitions(p)
@@ -186,8 +200,7 @@ def score(games, p, version, scenarios=SCENARIOS):
     for g, scenario, seed in itertools.product(games, scenarios, SEEDS):
         base = g["ball"] if scenario == "raw" else fill_gaps(g["ball"], g["period"])
         ball = degrade(base, seed)
-        near, speed = features(g["home"], g["away"], ball)
-        pred = decode(ball, near, speed, g["period"], p, version)
+        pred = decode(g, ball, p, version)
         # Separate the halves with one ungraded frame so no possession spans halftime.
         cut = np.flatnonzero(np.diff(g["period"]))[0] + 1
         gt_l = np.insert(v1.LABELS[g["gt"]], cut, "X")
@@ -218,7 +231,8 @@ if __name__ == "__main__":
         print("game {}: {} frames  H {}  A {}  D {}".format(g, len(data["gt"]), *counts))
 
     print("\n{:<8} {:<8} {:>8} {:>8}".format("model", "scenario", "spellF1", "macroF1"))
-    for name, params, version in (("v1", v1.PARAMS, 1), ("v2", v2.PARAMS, 2)):
+    for name, params, version in (("v1", v1.PARAMS, 1), ("v2", v2.PARAMS, 2),
+                                  ("v3", v3.PARAMS, 3)):
         for scenario in SCENARIOS + ("mean",):
             which = SCENARIOS if scenario == "mean" else (scenario,)
             print("{:<8} {:<8} {:>8.4f} {:>8.4f}".format(
