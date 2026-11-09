@@ -48,6 +48,7 @@ import possession_metrics as pm  # noqa: E402
 import possession_v1 as v1  # noqa: E402
 import possession_v2 as v2  # noqa: E402
 import possession_v3 as v3  # noqa: E402
+import possession_v4 as v4  # noqa: E402
 
 H, A, D = v1.H, v1.A, v1.D
 EXTERNAL_DIR = os.path.join(ROOT, "data", "external", "metrica_sample")  # gitignored
@@ -169,8 +170,12 @@ def load_game(game):
     frames, period, ph, ball = read_tracking_csv(paths["RawTrackingData_Home_Team"])
     _, _, pa, _ = read_tracking_csv(paths["RawTrackingData_Away_Team"])
     gt = event_labels(pd.read_csv(paths["RawEventsData"]), len(frames))
+    home_left = np.zeros(len(period), dtype=bool)
+    for half in np.unique(period):
+        rows = period == half
+        home_left[rows] = np.nanmean(ph[rows, :, 0]) < np.nanmean(pa[rows, :, 0])
     return {"period": period, "home": ph, "away": pa, "ball": ball, "gt": gt,
-            "speed": player_speed(ph, pa)}
+            "speed": player_speed(ph, pa), "home_left": home_left}
 
 
 # -- scoring --------------------------------------------------------------------------------
@@ -182,6 +187,8 @@ def decode(g, ball, p, version):
         filled = v3.fill_short_gaps(ball, int(round(p["fill_max_s"] * FPS)), blocks)
         near = nearest(g["home"], g["away"], filled)
         log_emit = v3.log_evidence(ball, filled, near, speed, PITCH, FPS, p)
+        if version >= 4:
+            log_emit += v4.territory_log_evidence(filled, near, g["home_left"], PITCH, FPS, p)
     else:
         log_emit = v1.tracking_log_evidence(ball, nearest(g["home"], g["away"], ball), p)
     if version == 2:
@@ -232,7 +239,7 @@ if __name__ == "__main__":
 
     print("\n{:<8} {:<8} {:>8} {:>8}".format("model", "scenario", "spellF1", "macroF1"))
     for name, params, version in (("v1", v1.PARAMS, 1), ("v2", v2.PARAMS, 2),
-                                  ("v3", v3.PARAMS, 3)):
+                                  ("v3", v3.PARAMS, 3), ("v4", v4.PARAMS, 4)):
         for scenario in SCENARIOS + ("mean",):
             which = SCENARIOS if scenario == "mean" else (scenario,)
             print("{:<8} {:<8} {:>8.4f} {:>8.4f}".format(
