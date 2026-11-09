@@ -13,8 +13,11 @@ stoppage and dead balls were badly under-predicted. v2 adds two dead-ball signal
     frames), so it does not depend on the unit of the file's own speed column.
 
 Everything else -- tracking evidence, Smart Tagging priors, Viterbi decoding -- is v1's. As in v1,
-every number in PARAMS is a football-informed default, not fitted to this match; tuning happens
-on external matches only.
+every number in PARAMS is a football-informed default, not fitted to this match. They were then
+checked on external matches only (solution/external_eval.py, Metrica's public sample games):
+v1 0.327 -> v2 0.416 spellF1 there. An 81-setting grid search found nothing clearly better (best
+0.422, within noise and driven by the scenario where ball gaps are least like ours), so the
+defaults stand.
 """
 
 import argparse
