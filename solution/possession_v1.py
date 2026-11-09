@@ -205,8 +205,11 @@ def viterbi(log_emit, log_trans):
 
 # -- putting it together --------------------------------------------------------------------
 
-def predict(game=GAME, data_dir=None, p=PARAMS):
-    """Labels for every video frame: H/A/D inside the two halves, X outside them."""
+def predict(game=GAME, data_dir=None, p=PARAMS, extra_log_emit=None):
+    """Labels for every video frame: H/A/D inside the two halves, X outside them.
+
+    extra_log_emit, an (n, 3) array, lets later versions add evidence before decoding.
+    """
     meta_path = require(["atd_meta"], game, data_dir)[0]
     home_name = [t.findtext("Name") for t in ET.parse(meta_path).getroot().iter("Team")][0]
     fps = GAMES[game]["fps"]
@@ -215,6 +218,8 @@ def predict(game=GAME, data_dir=None, p=PARAMS):
     n = len(ball)
     log_emit = tracking_log_evidence(ball, near, p)
     log_emit += tagging_log_prior(load_smart_tagging.load(game, data_dir), n, home_name, fps, p)
+    if extra_log_emit is not None:
+        log_emit += extra_log_emit
 
     labels = np.full(n, "X", dtype="<U1")
     log_trans = log_transitions(p)
