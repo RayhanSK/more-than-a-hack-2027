@@ -170,12 +170,56 @@ def fit(X, y, signed, p=PARAMS):
             "log_prior": np.log(prior).tolist()}
 
 
+def fit_mlp(X, y, signed, p=PARAMS, hidden=32, steps=600, lr=0.01, seed=0):
+    """A one-hidden-layer network (tanh), trained by full-batch Adam from a fixed seed, so it is
+    deterministic. Same home/away-swap augmentation as fit(). It can learn combinations of clues
+    ("close AND slow") that a linear model cannot."""
+    Xs = X.copy()
+    Xs[:, signed] *= -1
+    ys = np.where(y == H, A, np.where(y == A, H, y))
+    X, y = np.vstack([X, Xs]), np.concatenate([y, ys])
+    mean, std = X.mean(0), X.std(0) + 1e-9
+    Z = (X - mean) / std
+    Y = np.eye(3)[y]
+    rng = np.random.default_rng(seed)
+    params = [rng.normal(0, 1 / np.sqrt(Z.shape[1]), (Z.shape[1], hidden)), np.zeros(hidden),
+              rng.normal(0, 1 / np.sqrt(hidden), (hidden, 3)), np.zeros(3)]
+    m = [np.zeros_like(q) for q in params]
+    v = [np.zeros_like(q) for q in params]
+    for t in range(1, steps + 1):
+        W1, b1, W2, b2 = params
+        h = np.tanh(Z @ W1 + b1)
+        logits = h @ W2 + b2
+        logits -= logits.max(1, keepdims=True)
+        P = np.exp(logits)
+        P /= P.sum(1, keepdims=True)
+        g = (P - Y) / len(Z)
+        gW2 = h.T @ g + p["l2"] * W2
+        gb2 = g.sum(0)
+        gh = (g @ W2.T) * (1 - h ** 2)
+        gW1 = Z.T @ gh + p["l2"] * W1
+        gb1 = gh.sum(0)
+        for q, gq, mq, vq in zip(params, (gW1, gb1, gW2, gb2), m, v):
+            mq *= 0.9
+            mq += 0.1 * gq
+            vq *= 0.999
+            vq += 0.001 * gq ** 2
+            q -= lr * (mq / (1 - 0.9 ** t)) / (np.sqrt(vq / (1 - 0.999 ** t)) + 1e-8)
+    prior = np.bincount(y, minlength=3) / len(y)
+    return {"kind": "mlp", "mean": mean.tolist(), "std": std.tolist(),
+            "W1": params[0].tolist(), "b1": params[1].tolist(), "W2": params[2].tolist(),
+            "b2": params[3].tolist(), "log_prior": np.log(prior).tolist()}
+
+
 def learned_log_evidence(feats, model, p=PARAMS):
     """(n, 3) scaled log-likelihoods: log P(class | x) - log P(class), times learned_weight."""
-    Z = np.column_stack([(feats - np.array(model["mean"])) / np.array(model["std"]),
-                         np.ones(len(feats))])
-    logits = Z @ np.array(model["W"])
-    logits -= logits.max(1, keepdims=True)
+    Zn = (feats - np.array(model["mean"])) / np.array(model["std"])
+    if model.get("kind") == "mlp":
+        h = np.tanh(Zn @ np.array(model["W1"]) + np.array(model["b1"]))
+        logits = h @ np.array(model["W2"]) + np.array(model["b2"])
+    else:
+        logits = np.column_stack([Zn, np.ones(len(feats))]) @ np.array(model["W"])
+    logits = logits - logits.max(1, keepdims=True)
     logp = logits - np.log(np.exp(logits).sum(1, keepdims=True))
     return (logp - np.array(model["log_prior"])) * p["learned_weight"]
 

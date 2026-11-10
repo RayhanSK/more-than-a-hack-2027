@@ -53,4 +53,4 @@ Only on external data. The provided match's ground truth and video were never us
 | v5 (before sharper team vote, 2 matches) | 0.485 | 0.337 |
 | v5 (3 matches) | 0.489 | 0.377 |
 | v6 (each match scored by a model trained on the other four) | 0.527 | 0.419 |
-| v7 (final; same leave-one-match-out test) | 0.601 | 0.515 |
+| v7 (final; same leave-one-match-out test) | 0.616 | 0.527 |

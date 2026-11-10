@@ -69,6 +69,8 @@ ORIGINAL_DECODE = e.decode
 
 def train(games, p=v6.PARAMS):
     X, y, signed = training_set(games, p)
+    if p.get("classifier") == "mlp":
+        return v6.fit_mlp(X, y, signed, p)
     return v6.fit(X, y, signed, p)
 
 

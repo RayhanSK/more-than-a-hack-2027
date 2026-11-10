@@ -10,7 +10,9 @@ next touch after it, and how long ago / how soon (the match is recorded, so look
 fair). Everything else is v6: same classifier, same decoder, same external training data.
 
 Leave-one-match-out on the external matches (train on four, score the fifth): v6 0.527 -> v7
-0.601 on Metrica, 0.419 -> 0.515 on IDSSE, better on every one of the five matches.
+0.601 on Metrica, 0.419 -> 0.515 on IDSSE, better on every one of the five matches. With learned_weight re-picked at 0.5: 0.616 / 0.527.
+A small neural network instead of the logistic regression (train_v6.py, classifier "mlp") gave
+0.638 / 0.524: better on Metrica, no better on the Bundesliga matches, so the simpler model stays.
 """
 
 import argparse
@@ -26,7 +28,12 @@ import possession_v6 as v6  # noqa: E402
 
 WEIGHTS_PATH = os.path.join(HERE, "v7_weights.json")
 PARAMS = dict(v6.PARAMS)
-PARAMS.update({"touch_features": True})
+PARAMS.update({
+    "touch_features": True,
+    # Re-picked for v7 by leave-one-match-out: 0.3 / 0.5 / 0.8 gave mean spellF1
+    # 0.558 / 0.571 / 0.569. Switch-cost changes (x0.5, x2 on each) moved it by under 0.005.
+    "learned_weight": 0.5,
+})
 
 
 def predict(game=v1.GAME, data_dir=None, p=PARAMS):
