@@ -32,7 +32,8 @@ Only on external data. The provided match's ground truth and video were never us
 
 * Metrica Sports' public sample games 1 and 2 (github.com/metrica-sports/sample-data), with ground
   truth derived from their event data by an algorithm. Downloaded automatically.
-* IDSSE: two Bundesliga 2022/23 matches (Köln v Bayern, Bochum v Leverkusen) from Bassek et al.,
+* IDSSE: three Bundesliga 2022/23 matches (Köln v Bayern, Bochum v Leverkusen, Düsseldorf v
+  Nürnberg) from Bassek et al.,
   "An integrated dataset of spatiotemporal and event data in elite soccer", Sci Data 12, 195
   (2025), CC BY 4.0. Ground truth is the official DFL per-frame ball status and possession.
   Download the matchinformation and positions files from figshare, convert each with
@@ -46,4 +47,5 @@ Only on external data. The provided match's ground truth and video were never us
 | v2 | 0.416 | 0.226 |
 | v3 | 0.444 | 0.253 |
 | v4 | 0.456 | 0.263 |
-| v5 | 0.485 | 0.337 |
+| v5 (before sharper team vote, 2 matches) | 0.485 | 0.337 |
+| v5 (final, 3 matches) | 0.489 | 0.377 |

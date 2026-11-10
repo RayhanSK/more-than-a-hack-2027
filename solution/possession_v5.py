@@ -11,7 +11,10 @@ Checked on external matches only (solution/external_eval.py). On the Bundesliga 
 the ball is tracked through stoppages and the official DFL feed says when play is live, spellF1
 went from 0.263 (v4) to 0.337. On Metrica's games, whose ball disappears at stoppages, it changes
 nothing, as expected. still_mps, still_scale_mps and still_weight were picked there from a small
-grid.
+grid. A third Bundesliga match (Düsseldorf v Nürnberg), added after those settings were
+chosen, confirmed the gain: 0.332 -> 0.398. Sharpening the "which team is closer" vote
+(margin_scale_m 1.5 -> 0.75) then took the Bundesliga score to 0.377 (three matches) and Metrica
+to 0.489.
 """
 
 import argparse
@@ -35,6 +38,9 @@ PARAMS.update({
     "still_scale_mps": 0.5,
     # Per-frame weight of that evidence (the tracking votes use evidence_weight = 0.1).
     "still_weight": 0.3,
+    # Sharper "which team is closer" vote (v1 used 1.5 m). Checked on all five external matches:
+    # 0.75 m improved both Metrica and IDSSE; 0.5 m helped IDSSE more but hurt Metrica.
+    "margin_scale_m": 0.75,
 })
 
 
