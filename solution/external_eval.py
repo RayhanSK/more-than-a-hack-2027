@@ -49,9 +49,11 @@ import possession_v1 as v1  # noqa: E402
 import possession_v2 as v2  # noqa: E402
 import possession_v3 as v3  # noqa: E402
 import possession_v4 as v4  # noqa: E402
+import possession_v5 as v5  # noqa: E402
 
 H, A, D = v1.H, v1.A, v1.D
 EXTERNAL_DIR = os.path.join(ROOT, "data", "external", "metrica_sample")  # gitignored
+IDSSE_DIR = os.path.join(ROOT, "data", "external", "idsse")  # .npz from idsse_convert.py
 SOURCE = "https://raw.githubusercontent.com/metrica-sports/sample-data/master/data"
 GAMES = (1, 2)
 PITCH = (105.0, 68.0)  # the sample data's documented pitch size
@@ -174,8 +176,48 @@ def load_game(game):
     for half in np.unique(period):
         rows = period == half
         home_left[rows] = np.nanmean(ph[rows, :, 0]) < np.nanmean(pa[rows, :, 0])
-    return {"period": period, "home": ph, "away": pa, "ball": ball, "gt": gt,
-            "speed": player_speed(ph, pa), "home_left": home_left}
+    return {"name": "metrica{}".format(game), "period": period, "home": ph, "away": pa,
+            "ball": ball, "gt": gt, "speed": player_speed(ph, pa), "home_left": home_left,
+            "scenarios": SCENARIOS}
+
+
+def load_idsse(path):
+    """One IDSSE match converted by idsse_convert.py. Ground truth is the official DFL per-frame
+    BallStatus/BallPossession. Its ball is tracked through stoppages, so it complements Metrica
+    (where the ball disappears at stoppages); it is scored only in the "raw" scenario, since its
+    ball has no gaps to fill."""
+    z = np.load(path)
+    parts = [0, 1]
+    period = np.concatenate([np.full(len(z["ball{}".format(k)]), k + 1) for k in parts])
+    ball = np.concatenate([z["ball{}".format(k)] for k in parts])
+    status = np.concatenate([z["status{}".format(k)] for k in parts])
+    poss = np.concatenate([z["poss{}".format(k)] for k in parts])
+    gt = np.where(status == 0, D, np.where(poss == 1, H, np.where(poss == 2, A, D))).astype(np.int8)
+    k = max(z["home0"].shape[1], z["home1"].shape[1])
+    j = max(z["guest0"].shape[1], z["guest1"].shape[1])
+
+    def stack(side, width):
+        return np.concatenate([np.pad(z["{}{}".format(side, h)].astype(float),
+                                      ((0, 0), (0, width - z["{}{}".format(side, h)].shape[1]),
+                                       (0, 0)), constant_values=np.nan) for h in parts])
+    ph, pa = stack("home", k), stack("guest", j)
+    home_left = np.zeros(len(period), dtype=bool)
+    for half in (1, 2):
+        rows = period == half
+        home_left[rows] = np.nanmean(ph[rows, :, 0]) < np.nanmean(pa[rows, :, 0])
+    return {"name": os.path.basename(path)[:-4], "period": period, "home": ph, "away": pa,
+            "ball": ball, "gt": gt, "speed": player_speed(ph, pa), "home_left": home_left,
+            "scenarios": ("raw",)}
+
+
+def load_all(sources=("metrica", "idsse")):
+    games = []
+    if "metrica" in sources:
+        games += [load_game(g) for g in GAMES]
+    if "idsse" in sources and os.path.isdir(IDSSE_DIR):
+        games += [load_idsse(os.path.join(IDSSE_DIR, f))
+                  for f in sorted(os.listdir(IDSSE_DIR)) if f.endswith(".npz")]
+    return games
 
 
 # -- scoring --------------------------------------------------------------------------------
@@ -189,6 +231,8 @@ def decode(g, ball, p, version):
         log_emit = v3.log_evidence(ball, filled, near, speed, PITCH, FPS, p)
         if version >= 4:
             log_emit += v4.territory_log_evidence(filled, near, g["home_left"], PITCH, FPS, p)
+        if version >= 5:
+            log_emit += v5.still_log_evidence(ball, PITCH, FPS, p)
     else:
         log_emit = v1.tracking_log_evidence(ball, nearest(g["home"], g["away"], ball), p)
     if version == 2:
@@ -205,6 +249,8 @@ def score(games, p, version, scenarios=SCENARIOS):
     """Mean spellF1 and macroF1 over every game, scenario and degradation seed."""
     spell, macro = [], []
     for g, scenario, seed in itertools.product(games, scenarios, SEEDS):
+        if scenario not in g["scenarios"]:
+            continue
         base = g["ball"] if scenario == "raw" else fill_gaps(g["ball"], g["period"])
         ball = degrade(base, seed)
         pred = decode(g, ball, p, version)
@@ -230,20 +276,25 @@ GRID = {
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--tune", action="store_true", help="grid-search v2's main settings")
+    parser.add_argument("--source", choices=("metrica", "idsse", "all"), default="all")
     args = parser.parse_args()
 
-    games = [load_game(g) for g in GAMES]
-    for g, data in zip(GAMES, games):
+    games = load_all(("metrica", "idsse") if args.source == "all" else (args.source,))
+    for data in games:
         counts = np.bincount(data["gt"], minlength=3)
-        print("game {}: {} frames  H {}  A {}  D {}".format(g, len(data["gt"]), *counts))
+        print("{}: {} frames  H {}  A {}  D {}".format(data["name"], len(data["gt"]), *counts))
 
-    print("\n{:<8} {:<8} {:>8} {:>8}".format("model", "scenario", "spellF1", "macroF1"))
+    print("\n{:<8} {:<10} {:>8} {:>8}".format("model", "games", "spellF1", "macroF1"))
+    groups = [("metrica", [g for g in games if g["name"].startswith("metrica")]),
+              ("idsse", [g for g in games if not g["name"].startswith("metrica")]),
+              ("all", games)]
     for name, params, version in (("v1", v1.PARAMS, 1), ("v2", v2.PARAMS, 2),
-                                  ("v3", v3.PARAMS, 3), ("v4", v4.PARAMS, 4)):
-        for scenario in SCENARIOS + ("mean",):
-            which = SCENARIOS if scenario == "mean" else (scenario,)
-            print("{:<8} {:<8} {:>8.4f} {:>8.4f}".format(
-                name, scenario, *score(games, params, version, which)))
+                                  ("v3", v3.PARAMS, 3), ("v4", v4.PARAMS, 4),
+                                  ("v5", v5.PARAMS, 5)):
+        for label, subset in groups:
+            if subset:
+                print("{:<8} {:<10} {:>8.4f} {:>8.4f}".format(
+                    name, label, *score(subset, params, version)))
 
     if args.tune:
         keys = list(GRID)
