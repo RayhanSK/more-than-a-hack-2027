@@ -21,7 +21,9 @@ the output is byte-identical either way.
 | `possession_v2.py` | dead-ball evidence: long ball gaps and slow player movement |
 | `possession_v3.py` | close control counts more, flying balls count less, short ball gaps bridged |
 | `possession_v4.py` | on unclear frames, lean towards the team defending that half |
-| `possession_v5.py` | **final model**: a ball sitting still is evidence of a stoppage |
+| `possession_v5.py` | a ball sitting still is evidence of a stoppage |
+| `possession_v6.py` | **final model**: v5's clues, weighted by a classifier learned from external matches |
+| `train_v6.py` | trains that classifier (external data only) and writes `v6_weights.json` |
 | `make_submission.py` | the one command above |
 | `external_eval.py` | scores and tunes the models on external matches only |
 | `idsse_convert.py` | converts an IDSSE (DFL) match into the compact form `external_eval.py` reads |
@@ -48,4 +50,5 @@ Only on external data. The provided match's ground truth and video were never us
 | v3 | 0.444 | 0.253 |
 | v4 | 0.456 | 0.263 |
 | v5 (before sharper team vote, 2 matches) | 0.485 | 0.337 |
-| v5 (final, 3 matches) | 0.489 | 0.377 |
+| v5 (3 matches) | 0.489 | 0.377 |
+| v6 (final; each match scored by a model trained on the other four) | 0.527 | 0.419 |
