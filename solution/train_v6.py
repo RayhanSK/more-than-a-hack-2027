@@ -2,6 +2,7 @@
 
     python solution/train_v6.py            # leave-one-match-out test, then train on all, save
     python solution/train_v6.py --no-test  # just train on all and save solution/v6_weights.json
+    python solution/train_v6.py --version 7   # the same for v7 (touch clues), v7_weights.json
 
 Leave-one-match-out: for each external match, train on the others and score the one left out,
 next to v5 on the same match. That is the honest estimate of how v6 does on a match it has never
@@ -23,6 +24,7 @@ import possession_v1 as v1  # noqa: E402
 import possession_v3 as v3  # noqa: E402
 import possession_v5 as v5  # noqa: E402
 import possession_v6 as v6  # noqa: E402
+import possession_v7 as v7  # noqa: E402
 
 TRAIN_SEED = 100   # degradation seed for training data, distinct from the scoring seeds
 SUBSAMPLE = 5      # every 5th frame is plenty; neighbours are nearly identical
@@ -73,29 +75,34 @@ def train(games, p=v6.PARAMS):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--no-test", action="store_true")
+    parser.add_argument("--version", type=int, choices=(6, 7), default=6)
     args = parser.parse_args()
+    module = v7 if args.version == 7 else v6
+    params = module.PARAMS
 
     games = e.load_all()
     print("external matches:", [g["name"] for g in games])
     if not args.no_test:
         rows = []
         for held in games:
-            model = train([g for g in games if g is not held])
+            model = train([g for g in games if g is not held], params)
             e.decode = make_decode(model)
-            s6 = e.score([held], v6.PARAMS, 6)[0]
+            s6 = e.score([held], params, 6)[0]
             e.decode = ORIGINAL_DECODE
             s5 = e.score([held], v5.PARAMS, 5)[0]
             rows.append((held["name"], s5, s6))
-            print("{:<10} v5 {:.4f}  v6 {:.4f}".format(*rows[-1]), flush=True)
+            print("{:<10} v5 {:.4f}  v{} {:.4f}".format(rows[-1][0], rows[-1][1], args.version,
+                                                     rows[-1][2]), flush=True)
         met = [r for r in rows if r[0].startswith("metrica")]
         ids = [r for r in rows if not r[0].startswith("metrica")]
         for label, sub in (("metrica", met), ("idsse", ids)):
             if sub:
-                print("{:<10} v5 {:.4f}  v6 {:.4f}".format(
-                    label, np.mean([r[1] for r in sub]), np.mean([r[2] for r in sub])))
+                print("{:<10} v5 {:.4f}  v{} {:.4f}".format(
+                    label, np.mean([r[1] for r in sub]), args.version,
+                    np.mean([r[2] for r in sub])))
 
-    model = train(games)
+    model = train(games, params)
     model["trained_on"] = [g["name"] for g in games]
-    with open(v6.WEIGHTS_PATH, "w") as handle:
+    with open(module.WEIGHTS_PATH, "w") as handle:
         json.dump(model, handle, indent=1)
-    print("-> {}".format(os.path.relpath(v6.WEIGHTS_PATH, v1.ROOT)))
+    print("-> {}".format(os.path.relpath(module.WEIGHTS_PATH, v1.ROOT)))

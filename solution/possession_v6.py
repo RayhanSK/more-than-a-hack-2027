@@ -92,9 +92,56 @@ def features(ball, ball_filled, near, player_speed, home_left, pitch, fps, p=PAR
         (ps_ok, False), (ps, False),
         (depth, True), (depth * (closest > p["unclear_m"]), True),
     ]
+    if p.get("touch_features"):
+        cols += touch_features(ball_filled, margin, closest, known, pitch, fps)
     feats = np.column_stack([np.asarray(c, dtype=float) for c, _ in cols])
     signed = np.array([s for _, s in cols])
     return feats, signed
+
+
+def _carry(values, valid, reverse=False):
+    """Forward-fill (or backward-fill) values from frames where valid; 0 before the first one.
+    Also returns frames since (or until) that frame."""
+    n = len(values)
+    order = np.arange(n)[::-1] if reverse else np.arange(n)
+    idx = np.where(valid[order], order, -1)
+    if reverse:
+        idx = np.where(idx < 0, n, idx)
+        last = np.minimum.accumulate(idx)
+        ok = last < n
+    else:
+        last = np.maximum.accumulate(idx)
+        ok = last >= 0
+    last, ok = last[::-1] if reverse else last, ok[::-1] if reverse else ok
+    held = np.where(ok, values[np.clip(last, 0, n - 1)], 0.0)
+    dist = np.where(ok, np.abs(np.arange(n) - last), 10 ** 6)
+    return held, dist
+
+
+def touch_features(ball_filled, margin, closest, known, pitch, fps, touch_mps=3.0, touch_m=2.0):
+    """v7's extra clues: a TOUCH is a sudden change in the ball's velocity (a pass, a trap, a
+    tackle) with a player close by; its team is whichever is nearer. Features: the touch itself
+    (home-signed), and which team made the last touch before and the next touch after each frame,
+    with how long ago / how soon (the decoder can use the future: the match is recorded)."""
+    length, width = pitch
+    xy = np.column_stack([ball_filled[:, 0] * length, ball_filled[:, 1] * width])
+    vel = np.full_like(xy, np.nan)
+    vel[1:-1] = (xy[2:] - xy[:-2]) * fps / 2
+    dv = np.full(len(xy), np.nan)
+    dv[2:-2] = np.hypot(*(vel[4:] - vel[:-4]).T)
+    dv = np.where(np.isnan(dv), 0.0, np.minimum(dv, 30.0))
+    side = np.sign(margin)
+    touch = known & (dv > touch_mps) & (closest < touch_m) & (side != 0)
+    last_side, since = _carry(side, touch)
+    next_side, until = _carry(side, touch, reverse=True)
+    since_s, until_s = np.minimum(since / fps, 30.0), np.minimum(until / fps, 30.0)
+    return [
+        (np.tanh(dv / 5.0) * (closest < touch_m) * side, True),
+        (last_side, True), (last_side * np.exp(-since_s / 3.0), True),
+        (next_side, True), (next_side * np.exp(-until_s / 3.0), True),
+        ((last_side == next_side) * last_side, True),
+        (np.log1p(since_s), False), (np.log1p(until_s), False),
+    ]
 
 
 # -- the classifier -------------------------------------------------------------------------

@@ -22,8 +22,9 @@ the output is byte-identical either way.
 | `possession_v3.py` | close control counts more, flying balls count less, short ball gaps bridged |
 | `possession_v4.py` | on unclear frames, lean towards the team defending that half |
 | `possession_v5.py` | a ball sitting still is evidence of a stoppage |
-| `possession_v6.py` | **final model**: v5's clues, weighted by a classifier learned from external matches |
-| `train_v6.py` | trains that classifier (external data only) and writes `v6_weights.json` |
+| `possession_v6.py` | v5's clues, weighted by a classifier learned from external matches |
+| `possession_v7.py` | **final model**: v6 plus ball-touch clues (who touched it last / next) |
+| `train_v6.py` | trains the v6 / v7 classifier (external data only): `--version 7` writes `v7_weights.json` |
 | `make_submission.py` | the one command above |
 | `external_eval.py` | scores and tunes the models on external matches only |
 | `idsse_convert.py` | converts an IDSSE (DFL) match into the compact form `external_eval.py` reads |
@@ -51,4 +52,5 @@ Only on external data. The provided match's ground truth and video were never us
 | v4 | 0.456 | 0.263 |
 | v5 (before sharper team vote, 2 matches) | 0.485 | 0.337 |
 | v5 (3 matches) | 0.489 | 0.377 |
-| v6 (final; each match scored by a model trained on the other four) | 0.527 | 0.419 |
+| v6 (each match scored by a model trained on the other four) | 0.527 | 0.419 |
+| v7 (final; same leave-one-match-out test) | 0.601 | 0.515 |
