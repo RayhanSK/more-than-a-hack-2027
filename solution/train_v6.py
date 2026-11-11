@@ -27,6 +27,7 @@ import possession_v6 as v6  # noqa: E402
 import possession_v7 as v7  # noqa: E402
 
 TRAIN_SEED = 100   # degradation seed for training data, distinct from the scoring seeds
+# (p["train_seeds"], if set, lists several: more variations of where the ball goes missing)
 SUBSAMPLE = 5      # every 5th frame is plenty; neighbours are nearly identical
 
 
@@ -35,7 +36,13 @@ def game_features(g, ball, p):
     blocks = [(i[0], i[-1]) for i in (np.flatnonzero(period == h) for h in np.unique(period))]
     filled = v3.fill_short_gaps(ball, int(round(p["fill_max_s"] * e.FPS)), blocks)
     near = e.nearest(g["home"], g["away"], filled)
-    return v6.features(ball, filled, near, g["speed"], g["home_left"], e.PITCH, e.FPS, p)
+    crowd = None
+    if p.get("crowd_features"):
+        length, width = e.PITCH
+        dist = [np.hypot((pl[:, :, 0] - filled[:, None, 0]) * length,
+                         (pl[:, :, 1] - filled[:, None, 1]) * width) for pl in (g["home"], g["away"])]
+        crowd = v6.crowd_from_distances(*dist)
+    return v6.features(ball, filled, near, g["speed"], g["home_left"], e.PITCH, e.FPS, p, crowd)
 
 
 def training_set(games, p):
@@ -43,9 +50,10 @@ def training_set(games, p):
     for g in games:
         for scenario in g["scenarios"]:
             base = g["ball"] if scenario == "raw" else e.fill_gaps(g["ball"], g["period"])
-            feats, signed = game_features(g, e.degrade(base, TRAIN_SEED), p)
-            X.append(feats[::SUBSAMPLE])
-            y.append(g["gt"][::SUBSAMPLE])
+            for seed in p.get("train_seeds", (TRAIN_SEED,)):
+                feats, signed = game_features(g, e.degrade(base, seed), p)
+                X.append(feats[::SUBSAMPLE])
+                y.append(g["gt"][::SUBSAMPLE])
     return np.vstack(X), np.concatenate(y), signed
 
 

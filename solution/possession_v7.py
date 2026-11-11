@@ -13,6 +13,14 @@ Leave-one-match-out on the external matches (train on four, score the fifth): v6
 0.601 on Metrica, 0.419 -> 0.515 on IDSSE, better on every one of the five matches. With learned_weight re-picked at 0.5: 0.616 / 0.527.
 A small neural network instead of the logistic regression (train_v6.py, classifier "mlp") gave
 0.638 / 0.524: better on Metrica, no better on the Bundesliga matches, so the simpler model stays.
+
+Also tried, same test, not adopted (all optional switches in possession_v6.features / train_v6):
+  * crowd_features (players of each team within 3 m / 8 m, second-nearest): 0.619 / 0.531, +0.003
+  * control_features (touch counts per team over 5 s, same-team touch streaks, time on the ball):
+    0.606 / 0.511, worse
+  * train_seeds (three ball-dropout patterns per match instead of one): 0.614 / 0.528, no change
+  * training on the Bundesliga matches only: 0.516 on them, worse than training on all five
+  * MLP + crowd_features: 0.634 / 0.530, better on 3 of the 5 matches, worse on 2
 """
 
 import argparse

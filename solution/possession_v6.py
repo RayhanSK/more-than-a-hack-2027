@@ -52,7 +52,7 @@ PARAMS.update({
 
 # -- features -------------------------------------------------------------------------------
 
-def features(ball, ball_filled, near, player_speed, home_left, pitch, fps, p=PARAMS):
+def features(ball, ball_filled, near, player_speed, home_left, pitch, fps, p=PARAMS, crowd=None):
     """(n, F) home-signed features and (F,) bool mask of which are signed (flip on swap)."""
     seen = ~np.isnan(ball[:, 0])
     filled = ~seen & ~np.isnan(ball_filled[:, 0])
@@ -94,9 +94,100 @@ def features(ball, ball_filled, near, player_speed, home_left, pitch, fps, p=PAR
     ]
     if p.get("touch_features"):
         cols += touch_features(ball_filled, margin, closest, known, pitch, fps)
+    if p.get("control_features"):
+        cols += control_features(ball_filled, margin, closest, known, pitch, fps)
+    if crowd is not None:
+        cols += crowd_features(crowd, known)
     feats = np.column_stack([np.asarray(c, dtype=float) for c, _ in cols])
     signed = np.array([s for _, s in cols])
     return feats, signed
+
+
+CROWD_RADII_M = (3.0, 8.0)
+
+
+def crowd_from_distances(dist_h, dist_a):
+    """(n, 6) from per-player distances to the ball (n, k) for each team, NaN for untracked:
+    players within 3 m and 8 m, home and away, then each team's second-nearest distance."""
+    out = []
+    with np.errstate(invalid="ignore"):
+        for r in CROWD_RADII_M:
+            out += [np.sum(dist_h < r, axis=1), np.sum(dist_a < r, axis=1)]
+    for d in (dist_h, dist_a):
+        d = np.where(np.isnan(d), np.inf, d)
+        second = np.sort(d, axis=1)[:, 1] if d.shape[1] > 1 else np.full(len(d), np.inf)
+        out.append(np.minimum(second, 30.0))
+    return np.column_stack(out).astype(float)
+
+
+def crowd_features(crowd, known):
+    """v8's extra clues: how many players of each team are around the ball, and how close each
+    team's SECOND player is (support for the carrier, or a second defender pressing)."""
+    h3, a3, h8, a8, h2nd, a2nd = (np.where(known, crowd[:, i], 0.0) for i in range(6))
+    h2nd, a2nd = np.where(known, h2nd, 30.0), np.where(known, a2nd, 30.0)
+    return [
+        (np.tanh((h3 - a3) / 2.0), True), (np.tanh((h8 - a8) / 3.0), True),
+        (h3 + a3, False), (h8 + a8, False),
+        (np.tanh((a2nd - h2nd) / 3.0), True), (np.log1p(np.minimum(h2nd, a2nd)), False),
+    ]
+
+
+def _touches(ball_filled, margin, closest, known, pitch, fps, touch_mps=3.0, touch_m=2.0):
+    """Boolean touch frames and the touching side (+1 home, -1 away), as in touch_features."""
+    length, width = pitch
+    xy = np.column_stack([ball_filled[:, 0] * length, ball_filled[:, 1] * width])
+    vel = np.full_like(xy, np.nan)
+    vel[1:-1] = (xy[2:] - xy[:-2]) * fps / 2
+    dv = np.full(len(xy), np.nan)
+    dv[2:-2] = np.hypot(*(vel[4:] - vel[:-4]).T)
+    dv = np.where(np.isnan(dv), 0.0, dv)
+    side = np.sign(margin)
+    # one frame per touch: the local peak of the velocity change
+    peak = np.zeros(len(dv), dtype=bool)
+    peak[1:-1] = (dv[1:-1] >= dv[:-2]) & (dv[1:-1] > dv[2:])
+    return known & peak & (dv > touch_mps) & (closest < touch_m) & (side != 0), side
+
+
+def _run_lengths(keys):
+    """For each frame, the length of the run of equal consecutive values it belongs to."""
+    edges = np.flatnonzero(np.diff(keys)) + 1
+    starts = np.concatenate([[0], edges])
+    lengths = np.diff(np.concatenate([starts, [len(keys)]]))
+    return np.repeat(lengths, lengths)
+
+
+def control_features(ball_filled, margin, closest, known, pitch, fps, window_s=5.0, on_m=1.5):
+    """v8's clues for CONTROLLED possession, the challenge's own proxies: a team touching the
+    ball several times in a row (passes among itself), and one player staying on the ball."""
+    touch, side = _touches(ball_filled, margin, closest, known, pitch, fps)
+    w = int(window_s * fps)
+    kernel = np.ones(w)
+    th = (touch & (side > 0)).astype(float)
+    ta = (touch & (side < 0)).astype(float)
+    past = lambda x: np.convolve(x, kernel)[:len(x)]                  # last window_s, inclusive
+    future = lambda x: np.convolve(x[::-1], kernel)[:len(x)][::-1]    # next window_s, inclusive
+    # consecutive same-team touches: run length over the sequence of touches, carried forward
+    t_idx = np.flatnonzero(touch)
+    streak = np.zeros(len(touch))
+    if len(t_idx):
+        seq = side[t_idx]
+        run = np.ones(len(seq))
+        for i in range(1, len(seq)):
+            run[i] = run[i - 1] + 1 if seq[i] == seq[i - 1] else 1
+        vals = np.zeros(len(touch))
+        vals[t_idx] = np.minimum(run, 5) * seq
+        streak, _ = _carry(vals, touch)
+    # a player staying on the ball: run of frames with the same nearest side within on_m
+    on = known & (closest < on_m)
+    key = np.where(on, side, 0)
+    dwell = np.where(on, np.minimum(_run_lengths(key) / fps, 10.0), 0.0) * key
+    return [
+        (np.tanh((past(th) - past(ta)) / 2.0), True),
+        (np.tanh((future(th) - future(ta)) / 2.0), True),
+        (np.tanh(streak / 3.0), True),
+        (np.tanh(dwell / 2.0), True),
+        (np.log1p(past(th + ta)), False),
+    ]
 
 
 def _carry(values, valid, reverse=False):
