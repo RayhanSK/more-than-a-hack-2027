@@ -2,7 +2,7 @@
 
     python solution/make_submission.py --team "<team name>"
 
-Runs the final model (possession_v8, with solution/v8_weights.json) from the raw ATD tracking
+Runs the final model (possession_v9, with solution/v9_weights.json) from the raw ATD tracking
 and Smart Tagging, writes
 evaluation/results/<team name>.csv, runs the official format check on it, and prints the file's
 SHA-256 so two runs can be compared. Point MTAH_DATA_DIR at the data bundle if it is not in ./data.
@@ -21,7 +21,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import possession_v1 as v1  # noqa: E402
-import possession_v8 as final  # noqa: E402
+import possession_v9 as final  # noqa: E402
 
 
 def main():

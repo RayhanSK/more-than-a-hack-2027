@@ -24,8 +24,9 @@ the output is byte-identical either way.
 | `possession_v5.py` | a ball sitting still is evidence of a stoppage |
 | `possession_v6.py` | v5's clues, weighted by a classifier learned from external matches |
 | `possession_v7.py` | v6 plus ball-touch clues (who touched it last / next) |
-| `possession_v8.py` | **final model**: v7 plus how many players of each team are around the ball |
-| `train_v6.py` | trains the v6 / v7 / v8 classifier (external data only): `--version 8` writes `v8_weights.json` |
+| `possession_v8.py` | v7 plus how many players of each team are around the ball |
+| `possession_v9.py` | **final model**: v7's clues combined by a small neural network |
+| `train_v6.py` | trains the v6 / v7 / v8 classifier (external data only): `--version 9` writes `v9_weights.json` |
 | `make_submission.py` | the one command above |
 | `external_eval.py` | scores and tunes the models on external matches only |
 | `idsse_convert.py` | converts an IDSSE (DFL) match into the compact form `external_eval.py` reads |
@@ -56,4 +57,5 @@ Only on external data. The provided match's ground truth and video were never us
 | v6 (each match scored by a model trained on the other four) | 0.527 | 0.419 |
 | v7 (same test, 5 matches) | 0.616 | 0.527 |
 | v7 (leave-one-match-out over all 9 matches; IDSSE = 7 matches) | 0.610 | 0.538 |
-| v8 (final; same 9-match test) | 0.613 | 0.543 |
+| v8 (same 9-match test) | 0.613 | 0.543 |
+| v9 (final; same 9-match test) | 0.626 | 0.551 |

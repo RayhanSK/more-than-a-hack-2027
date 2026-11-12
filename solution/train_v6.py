@@ -4,6 +4,7 @@
     python solution/train_v6.py --no-test  # just train on all and save solution/v6_weights.json
     python solution/train_v6.py --version 7   # the same for v7 (touch clues), v7_weights.json
     python solution/train_v6.py --version 8   # v8 (touch + crowd clues), v8_weights.json
+    python solution/train_v6.py --version 9   # v9 (v7's clues, neural network), v9_weights.json
 
 Leave-one-match-out: for each external match, train on the others and score the one left out,
 next to v5 on the same match. That is the honest estimate of how v6 does on a match it has never
@@ -27,6 +28,7 @@ import possession_v5 as v5  # noqa: E402
 import possession_v6 as v6  # noqa: E402
 import possession_v7 as v7  # noqa: E402
 import possession_v8 as v8  # noqa: E402
+import possession_v9 as v9  # noqa: E402
 
 TRAIN_SEED = 100   # degradation seed for training data, distinct from the scoring seeds
 # (p["train_seeds"], if set, lists several: more variations of where the ball goes missing)
@@ -87,9 +89,9 @@ def train(games, p=v6.PARAMS):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--no-test", action="store_true")
-    parser.add_argument("--version", type=int, choices=(6, 7, 8), default=6)
+    parser.add_argument("--version", type=int, choices=(6, 7, 8, 9), default=6)
     args = parser.parse_args()
-    module = {6: v6, 7: v7, 8: v8}[args.version]
+    module = {6: v6, 7: v7, 8: v8, 9: v9}[args.version]
     params = module.PARAMS
 
     games = e.load_all()

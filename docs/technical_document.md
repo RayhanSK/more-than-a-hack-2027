@@ -10,16 +10,16 @@ and the Smart Tagging. Two steps:
 1. **Per-frame evidence.** Each frame gets a set of clues from the tracking — which team is nearer
    the ball, whether a player has it under close control, how fast the ball moves, whether it is
    sitting still, how long it has been missing, how fast the players move, whose half it is in,
-   and which team made the last and the next *touch*. A small classifier (multinomial logistic
-   regression) turns the clues into P(H), P(A), P(D). It is trained **only on external matches**.
+   and which team made the last and the next *touch*. A small neural network (one hidden layer of
+   32 units) turns the clues into P(H), P(A), P(D). It is trained **only on external matches**.
 2. **Whole possessions.** A three-state hidden Markov model with switch costs, decoded by Viterbi
    over each half, turns those noisy per-frame probabilities into whole possessions. A change of
    possession is only made when the evidence for it lasts long enough to pay its cost, which is
    what the possession-level ranking metric (spellF1) rewards.
 
-On external matches it was never trained on, the final model (v7) scores spellF1 **0.616** on
-Metrica's two public sample games and **0.527** on three Bundesliga matches, against **0.327** and
-**0.193** for our first version (section 5).
+On external matches it was never trained on, the final model (v9) scores spellF1 **0.626** on
+Metrica's two public sample games and **0.551** on seven Bundesliga matches. Our first version
+scored **0.327** and **0.193** (section 4).
 
 ## 2. Assets used, and how
 
@@ -39,7 +39,7 @@ setting comes from these datasets, all public:
 | dataset | matches | labels | who labelled / how |
 |---|---|---|---|
 | **Metrica Sports sample data** (github.com/metrica-sports/sample-data) | 2 full matches | per frame, derived by our own algorithm from Metrica's event data: set piece → that team; ball out / foul / shot out → `D` until the next event; other team events → that team; challenges and cards skipped (a contested ball stays with the last team, as in the challenge rules) | Metrica (events); derivation in `solution/external_eval.py` |
-| **IDSSE** — Bassek, Rein, Weber et al., *An integrated dataset of spatiotemporal and event data in elite soccer*, Sci Data 12, 195 (2025), CC BY 4.0 | 3 Bundesliga 2022/23 matches: Köln v Bayern, Bochum v Leverkusen, Düsseldorf v Nürnberg | per frame: official DFL `BallStatus` (alive/dead) and `BallPossession` (home/guest) | DFL's official tracking provider |
+| **IDSSE** — Bassek, Rein, Weber et al., *An integrated dataset of spatiotemporal and event data in elite soccer*, Sci Data 12, 195 (2025), CC BY 4.0 | all 7 Bundesliga 2022/23 matches in the dataset (Köln v Bayern, Bochum v Leverkusen, and five Fortuna Düsseldorf home games) | per frame: official DFL `BallStatus` (alive/dead) and `BallPossession` (home/guest) | DFL's official tracking provider |
 
 The IDSSE labels are produced the same way the challenge describes its own ground truth — from
 (corrected) tracking that marks the ball dead and names the owning team — so we treat them as the
@@ -51,8 +51,8 @@ no ball, the share reported for the ATD. Metrica's sample also loses the ball at
 stoppage, which would flatter "missing ball = dead"; it is scored twice, with its own gaps and with
 them interpolated away, and the two are averaged.
 
-**Fair testing.** For the learned models, each external match is scored by a model trained on the
-other four (leave-one-match-out), so every score is on a match the model has never seen, which
+**Fair testing.** For the learned models, each external match is scored by a model trained on all
+the others (leave-one-match-out), so every score is on a match the model has never seen, which
 is the situation on the provided game.
 
 ## 4. The model, version by version
@@ -67,12 +67,17 @@ Every version is in `solution/` and can be re-scored with `python solution/exter
 | v4 | on unclear frames, lean towards the team defending that half | 0.456 | 0.263 |
 | v5 | a ball sitting still is evidence of a stoppage; sharper nearest-team vote | 0.489 | 0.377 |
 | v6 | clue weights learned by logistic regression on the external matches | 0.527 | 0.419 |
-| **v7 (submitted)** | **ball-touch clues: team of the last and next touch, and how recent** | **0.616** | **0.527** |
+| v7 | ball-touch clues: team of the last and next touch, and how recent | 0.616 | 0.527 |
+| v7, retested with 9 matches | (same model, 4 more Bundesliga matches) | 0.610 | 0.538 |
+| v8 | players of each team within 3 m / 8 m of the ball | 0.613 | 0.543 |
+| **v9 (submitted)** | **v7's clues combined by a small neural network** | **0.626** | **0.551** |
 
 v1–v5 are scored on the external matches directly (their few settings were chosen there by small
-grid searches); v6–v7 by leave-one-match-out.
+grid searches); v6–v9 by leave-one-match-out. Up to v7 there were five external matches (IDSSE
+column = 3 matches); from the v7 retest on, nine (IDSSE = 7). v9 beats v8 on 8 of the 9 matches
+and is within 0.001 on the ninth; it also needs no extra pass over the tracking.
 
-**Clues (v7 features).** All are computed from the tracking alone. "Home-signed" features point
+**Clues (v9 features, the same as v7's).** All are computed from the tracking alone. "Home-signed" features point
 towards the home team when positive; training also sees every frame with home and away swapped,
 so the classifier cannot learn that one side simply has the ball more.
 
@@ -91,6 +96,11 @@ so the classifier cannot learn that one side simply has the ball more.
 dead→alive 1/500 (≈ 10 s possessions, a stoppage a minute, ≈ 20 s stoppages); decoded separately
 for each half, `X` outside the halves. The classifier's log-probabilities minus the class priors
 are used as emissions, weighted 0.5 per frame because consecutive frames are far from independent.
+
+**Classifier.** One hidden layer of 32 tanh units, softmax output, L2 penalty 1e-3, trained by
+full-batch Adam (600 steps, learning rate 0.01) from a fixed seed on every 5th frame of the
+external matches, so the weights are deterministic. Features are standardised; the weights and
+scaling are saved in `solution/v9_weights.json`.
 
 ## 5. Possession rules we implemented
 
@@ -111,11 +121,12 @@ are used as emissions, weighted 0.5 per frame because consecutive frames are far
 
 ## 6. What we tried and dropped
 
-All measured with the same leave-one-match-out test (Metrica / IDSSE, v7 = 0.616 / 0.527):
+All measured with leave-one-match-out (Metrica / IDSSE):
 
-- a small neural network instead of the logistic regression: 0.638 / 0.524 — better on Metrica
-  only; with the players-around-the-ball clue 0.634 / 0.530 — better on 3 of 5 matches only
-- players of each team within 3 m / 8 m of the ball: +0.003, not worth an extra pass over the data
+- with only five matches, the neural network beat the logistic regression on Metrica only
+  (0.638 / 0.524 vs 0.616 / 0.527); with nine it wins clearly, hence v9
+- players of each team within 3 m / 8 m of the ball (v8): consistent but small with the linear
+  model (+0.003 to +0.006); superseded by v9, which does better without it
 - "controlled possession" counters (touches per team over 5 s, same-team touch streaks, time on the
   ball): worse, 0.606 / 0.511
 - more ball-dropout variations in training; retuning the switch costs: no change
@@ -133,7 +144,7 @@ All measured with the same leave-one-match-out test (Metrica / IDSSE, v7 = 0.616
   restart it is; this is not needed for `D`, but it is for the possession that follows.
 - **Track slots are not players**, so we cannot follow one player's control over time; touch and
   control clues are per team.
-- **Small external training set** (five matches). With more time: more matches, a learned
+- **Small external training set** (nine matches; more data helped every time we added it). With more time: more matches, a learned
   transition model, and video-based ball detection to fill the ATD's gaps.
 
 ## 8. Reproduction
@@ -148,9 +159,9 @@ python solution/make_submission.py --team "<TEAM NAME>"
 
 This writes `evaluation/results/<TEAM NAME>.csv`, runs the official format check and prints the
 file's SHA-256. `--fresh` re-parses the raw data instead of using `data/cache/`; both give a
-byte-identical file. The learned weights are in `solution/v7_weights.json`; to recreate them from
+byte-identical file. The learned weights are in `solution/v9_weights.json`; to recreate them from
 the external data, download it as described in `solution/README.md` and run
-`python solution/train_v6.py --version 7`.
+`python solution/train_v6.py --version 9`.
 
 ## 9. Use of AI assistance
 
