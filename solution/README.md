@@ -1,0 +1,61 @@
+# Our solution
+
+## Reproduce the submission file
+
+Python 3.10. With the data bundle unpacked in `./data` (or `MTAH_DATA_DIR` pointing at it):
+
+```bash
+pip install -r solution/requirements.txt
+python solution/make_submission.py --team "<team name>"
+```
+
+This writes `evaluation/results/<team name>.csv`, runs the official format check, and prints the
+file's SHA-256. Add `--fresh` to ignore `data/cache/` and re-parse the raw data (about a minute);
+the output is byte-identical either way.
+
+## What each file is
+
+| file | what it adds |
+|---|---|
+| `possession_v1.py` | tracking evidence (who is nearest the ball), Smart Tagging priors, Viterbi decoding into whole possessions |
+| `possession_v2.py` | dead-ball evidence: long ball gaps and slow player movement |
+| `possession_v3.py` | close control counts more, flying balls count less, short ball gaps bridged |
+| `possession_v4.py` | on unclear frames, lean towards the team defending that half |
+| `possession_v5.py` | a ball sitting still is evidence of a stoppage |
+| `possession_v6.py` | v5's clues, weighted by a classifier learned from external matches |
+| `possession_v7.py` | v6 plus ball-touch clues (who touched it last / next) |
+| `possession_v8.py` | v7 plus how many players of each team are around the ball |
+| `possession_v9.py` | **final model**: v7's clues combined by a small neural network |
+| `train_v6.py` | trains the v6 / v7 / v8 classifier (external data only): `--version 9` writes `v9_weights.json` |
+| `make_submission.py` | the one command above |
+| `external_eval.py` | scores and tunes the models on external matches only |
+| `idsse_convert.py` | converts an IDSSE (DFL) match into the compact form `external_eval.py` reads |
+
+## How settings were chosen
+
+Only on external data. The provided match's ground truth and video were never used for tuning.
+
+* Metrica Sports' public sample games 1 and 2 (github.com/metrica-sports/sample-data), with ground
+  truth derived from their event data by an algorithm. Downloaded automatically.
+* IDSSE: all seven Bundesliga 2022/23 matches (J03WMX, J03WN1, J03WPY, J03WOH, J03WQQ, J03WOY,
+  J03WR9) from Bassek et al.,
+  "An integrated dataset of spatiotemporal and event data in elite soccer", Sci Data 12, 195
+  (2025), CC BY 4.0. Ground truth is the official DFL per-frame ball status and possession.
+  Download the matchinformation and positions files from figshare, convert each with
+  `python solution/idsse_convert.py <matchinformation.xml> <positions.xml> data/external/idsse/<id>.npz`.
+
+`python solution/external_eval.py` prints the scores (spellF1):
+
+| model | Metrica | IDSSE |
+|---|---|---|
+| v1 | 0.327 | 0.193 |
+| v2 | 0.416 | 0.226 |
+| v3 | 0.444 | 0.253 |
+| v4 | 0.456 | 0.263 |
+| v5 (before sharper team vote, 2 matches) | 0.485 | 0.337 |
+| v5 (3 matches) | 0.489 | 0.377 |
+| v6 (each match scored by a model trained on the other four) | 0.527 | 0.419 |
+| v7 (same test, 5 matches) | 0.616 | 0.527 |
+| v7 (leave-one-match-out over all 9 matches; IDSSE = 7 matches) | 0.610 | 0.538 |
+| v8 (same 9-match test) | 0.613 | 0.543 |
+| v9 (final; same 9-match test) | 0.626 | 0.551 |
