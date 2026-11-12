@@ -23,8 +23,9 @@ the output is byte-identical either way.
 | `possession_v4.py` | on unclear frames, lean towards the team defending that half |
 | `possession_v5.py` | a ball sitting still is evidence of a stoppage |
 | `possession_v6.py` | v5's clues, weighted by a classifier learned from external matches |
-| `possession_v7.py` | **final model**: v6 plus ball-touch clues (who touched it last / next) |
-| `train_v6.py` | trains the v6 / v7 classifier (external data only): `--version 7` writes `v7_weights.json` |
+| `possession_v7.py` | v6 plus ball-touch clues (who touched it last / next) |
+| `possession_v8.py` | **final model**: v7 plus how many players of each team are around the ball |
+| `train_v6.py` | trains the v6 / v7 / v8 classifier (external data only): `--version 8` writes `v8_weights.json` |
 | `make_submission.py` | the one command above |
 | `external_eval.py` | scores and tunes the models on external matches only |
 | `idsse_convert.py` | converts an IDSSE (DFL) match into the compact form `external_eval.py` reads |
@@ -35,8 +36,8 @@ Only on external data. The provided match's ground truth and video were never us
 
 * Metrica Sports' public sample games 1 and 2 (github.com/metrica-sports/sample-data), with ground
   truth derived from their event data by an algorithm. Downloaded automatically.
-* IDSSE: three Bundesliga 2022/23 matches (Köln v Bayern, Bochum v Leverkusen, Düsseldorf v
-  Nürnberg) from Bassek et al.,
+* IDSSE: all seven Bundesliga 2022/23 matches (J03WMX, J03WN1, J03WPY, J03WOH, J03WQQ, J03WOY,
+  J03WR9) from Bassek et al.,
   "An integrated dataset of spatiotemporal and event data in elite soccer", Sci Data 12, 195
   (2025), CC BY 4.0. Ground truth is the official DFL per-frame ball status and possession.
   Download the matchinformation and positions files from figshare, convert each with
@@ -53,4 +54,6 @@ Only on external data. The provided match's ground truth and video were never us
 | v5 (before sharper team vote, 2 matches) | 0.485 | 0.337 |
 | v5 (3 matches) | 0.489 | 0.377 |
 | v6 (each match scored by a model trained on the other four) | 0.527 | 0.419 |
-| v7 (final; same leave-one-match-out test) | 0.616 | 0.527 |
+| v7 (same test, 5 matches) | 0.616 | 0.527 |
+| v7 (leave-one-match-out over all 9 matches; IDSSE = 7 matches) | 0.610 | 0.538 |
+| v8 (final; same 9-match test) | 0.613 | 0.543 |
