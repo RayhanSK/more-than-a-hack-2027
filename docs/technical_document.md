@@ -1,6 +1,6 @@
 # Possession from automatic tracking — technical document
 
-**Team:** `<TEAM NAME>` · **Repository:** `<PUBLIC REPO URL>` · **Submission file:** `<TEAM NAME>.csv`
+**Team:** Analytics FC · **Repository:** https://github.com/RayhanSK/more-than-a-hack-2027 · **Submission file:** `Analytics FC.csv`
 
 ## 1. Summary
 
@@ -154,10 +154,10 @@ Python 3.10, numpy 2.2.6, pandas 2.3.3 (`solution/requirements.txt`). With the d
 
 ```bash
 pip install -r solution/requirements.txt
-python solution/make_submission.py --team "<TEAM NAME>"
+python solution/make_submission.py --team "Analytics FC"
 ```
 
-This writes `evaluation/results/<TEAM NAME>.csv`, runs the official format check and prints the
+This writes `evaluation/results/Analytics FC.csv`, runs the official format check and prints the
 file's SHA-256. `--fresh` re-parses the raw data instead of using `data/cache/`; both give a
 byte-identical file. The learned weights are in `solution/v9_weights.json`; to recreate them from
 the external data, download it as described in `solution/README.md` and run
@@ -165,7 +165,7 @@ the external data, download it as described in `solution/README.md` and run
 
 ## 9. Use of AI assistance
 
-`<TO CONFIRM WITH THE TEAM>` The code was written with the help of an AI coding assistant. In line
+The code was written with the help of an AI coding assistant. In line
 with the rules, none of the provided data (tracking, tagging, video or ground truth) was uploaded
 to it: the pipeline ran on our own computer, and the assistant saw only code, error messages, label counts, format-check results and the
 pipeline-check score on the public 5-minute window.
