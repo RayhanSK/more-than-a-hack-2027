@@ -162,10 +162,3 @@ file's SHA-256. `--fresh` re-parses the raw data instead of using `data/cache/`;
 byte-identical file. The learned weights are in `solution/v9_weights.json`; to recreate them from
 the external data, download it as described in `solution/README.md` and run
 `python solution/train_v6.py --version 9`.
-
-## 9. Use of AI assistance
-
-The code was written with the help of an AI coding assistant. In line
-with the rules, none of the provided data (tracking, tagging, video or ground truth) was uploaded
-to it: the pipeline ran on our own computer, and the assistant saw only code, error messages, label counts, format-check results and the
-pipeline-check score on the public 5-minute window.
